@@ -1,0 +1,142 @@
+From 8db50771206c44f6e2b301c78b1cad8abc46ece3 Mon Sep 17 00:00:00 2001
+From: Domen Vrankar <domen.vrankar@gmail.com>
+Date: Mon, 29 Mar 2021 00:06:05 +0200
+Subject: [PATCH 1/3] CPackRPM: handle scripts in debuginfo single package mode
+
+Enabling CPACK_RPM_DEBUGINFO_SINGLE_PACKAGE while
+using rpm install or erase scripts resulted in
+resulted missing scripts for non default components.
+
+Fixes: #21974
+(cherry picked from commit 31c184ad690be45494cf997df71ad09293a0d4b0)
+---
+ Modules/Internal/CPack/CPackRPM.cmake         | 19 +++++++++++++++++++
+ .../RunCMake/CPack/RPM/Prerequirements.cmake  |  7 +++++++
+ Tests/RunCMake/CPack/RunCMakeTest.cmake       |  2 +-
+ .../tests/INSTALL_SCRIPTS/ExpectedFiles.cmake |  7 ++++++-
+ ...RPM-COMPONENT-single_debug_info-stderr.txt |  1 +
+ .../INSTALL_SCRIPTS/RPM-Prerequirements.cmake | 11 +++++++++++
+ .../CPack/tests/INSTALL_SCRIPTS/test.cmake    |  6 ++++++
+ 7 files changed, 51 insertions(+), 2 deletions(-)
+ create mode 100644 Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/RPM-COMPONENT-single_debug_info-stderr.txt
+ create mode 100644 Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/RPM-Prerequirements.cmake
+
+diff --git a/Modules/Internal/CPack/CPackRPM.cmake b/Modules/Internal/CPack/CPackRPM.cmake
+index 08bbc6804c..2ee062238c 100644
+--- a/Modules/Internal/CPack/CPackRPM.cmake
++++ b/Modules/Internal/CPack/CPackRPM.cmake
+@@ -1637,6 +1637,25 @@ Vendor:         \@CPACK_RPM_PACKAGE_VENDOR\@
+ %description -n \@CPACK_RPM_PACKAGE_NAME\@
+ \@CPACK_RPM_PACKAGE_DESCRIPTION\@
+ 
++%post -n \@CPACK_RPM_PACKAGE_NAME\@
++\@RPM_SYMLINK_POSTINSTALL\@
++\@CPACK_RPM_SPEC_POSTINSTALL\@
++
++%posttrans -n \@CPACK_RPM_PACKAGE_NAME\@
++\@CPACK_RPM_SPEC_POSTTRANS\@
++
++%postun -n \@CPACK_RPM_PACKAGE_NAME\@
++\@CPACK_RPM_SPEC_POSTUNINSTALL\@
++
++%pre -n \@CPACK_RPM_PACKAGE_NAME\@
++\@CPACK_RPM_SPEC_PREINSTALL\@
++
++%pretrans -n \@CPACK_RPM_PACKAGE_NAME\@
++\@CPACK_RPM_SPEC_PRETRANS\@
++
++%preun -n \@CPACK_RPM_PACKAGE_NAME\@
++\@CPACK_RPM_SPEC_PREUNINSTALL\@
++
+ %files -n \@CPACK_RPM_PACKAGE_NAME\@
+ %defattr(\@TMP_DEFAULT_FILE_PERMISSIONS\@,\@TMP_DEFAULT_USER\@,\@TMP_DEFAULT_GROUP\@,\@TMP_DEFAULT_DIR_PERMISSIONS\@)
+ \@CPACK_RPM_INSTALL_FILES\@
+diff --git a/Tests/RunCMake/CPack/RPM/Prerequirements.cmake b/Tests/RunCMake/CPack/RPM/Prerequirements.cmake
+index 3416205bc6..e95cd15161 100644
+--- a/Tests/RunCMake/CPack/RPM/Prerequirements.cmake
++++ b/Tests/RunCMake/CPack/RPM/Prerequirements.cmake
+@@ -13,4 +13,11 @@ function(get_test_prerequirements found_var config_file)
+         "\nset(RPMBUILD_EXECUTABLE \"${RPMBUILD_EXECUTABLE}\")")
+     set(${found_var} true PARENT_SCOPE)
+   endif()
++
++  # optional tool for some tests
++  find_program(OBJDUMP_EXECUTABLE objdump)
++  if(OBJDUMP_EXECUTABLE)
++    file(APPEND "${config_file}"
++      "\nset(OBJDUMP_EXECUTABLE \"${OBJDUMP_EXECUTABLE}\")")
++  endif()
+ endfunction()
+diff --git a/Tests/RunCMake/CPack/RunCMakeTest.cmake b/Tests/RunCMake/CPack/RunCMakeTest.cmake
+index 15bfb60ee0..48b9c1d95c 100644
+--- a/Tests/RunCMake/CPack/RunCMakeTest.cmake
++++ b/Tests/RunCMake/CPack/RunCMakeTest.cmake
+@@ -16,7 +16,7 @@ run_cpack_test(VERSION "RPM.VERSION;DEB.VERSION" false "MONOLITHIC;COMPONENT")
+ run_cpack_test(EXTRA "DEB.EXTRA" false "COMPONENT")
+ run_cpack_test_subtests(GENERATE_SHLIBS "soversion_not_zero;soversion_zero" "DEB.GENERATE_SHLIBS" true "COMPONENT")
+ run_cpack_test(GENERATE_SHLIBS_LDCONFIG "DEB.GENERATE_SHLIBS_LDCONFIG" true "COMPONENT")
+-run_cpack_test(INSTALL_SCRIPTS "RPM.INSTALL_SCRIPTS" false "COMPONENT")
++run_cpack_test_subtests(INSTALL_SCRIPTS "default;single_debug_info" "RPM.INSTALL_SCRIPTS" false "COMPONENT")
+ run_cpack_test(LONG_FILENAMES "DEB.LONG_FILENAMES" false "MONOLITHIC")
+ run_cpack_test_subtests(MAIN_COMPONENT "invalid;found" "RPM.MAIN_COMPONENT" false "COMPONENT")
+ run_cpack_test(MINIMAL "RPM.MINIMAL;DEB.MINIMAL;7Z;TBZ2;TGZ;TXZ;TZ;ZIP;STGZ;External" false "MONOLITHIC;COMPONENT")
+diff --git a/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/ExpectedFiles.cmake b/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/ExpectedFiles.cmake
+index de38df9ef4..29e36a33fb 100644
+--- a/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/ExpectedFiles.cmake
++++ b/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/ExpectedFiles.cmake
+@@ -1,5 +1,10 @@
++if(RunCMake_SUBTEST_SUFFIX STREQUAL "single_debug_info")
++  set(EXPECTED_FILE_1 "install_scripts-0.1.1-1.*.rpm")
++else()
++  set(EXPECTED_FILE_1_COMPONENT "foo")
++endif()
++
+ set(EXPECTED_FILES_COUNT "2")
+-set(EXPECTED_FILE_1_COMPONENT "foo")
+ set(EXPECTED_FILE_CONTENT_1_LIST "/foo;/foo/CMakeLists.txt")
+ set(EXPECTED_FILE_2_COMPONENT "bar")
+ set(EXPECTED_FILE_CONTENT_2_LIST "/bar;/bar/CMakeLists.txt")
+diff --git a/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/RPM-COMPONENT-single_debug_info-stderr.txt b/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/RPM-COMPONENT-single_debug_info-stderr.txt
+new file mode 100644
+index 0000000000..8d98f9debd
+--- /dev/null
++++ b/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/RPM-COMPONENT-single_debug_info-stderr.txt
+@@ -0,0 +1 @@
++.*
+diff --git a/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/RPM-Prerequirements.cmake b/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/RPM-Prerequirements.cmake
+new file mode 100644
+index 0000000000..c5d20cc691
+--- /dev/null
++++ b/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/RPM-Prerequirements.cmake
+@@ -0,0 +1,11 @@
++function(get_test_prerequirements found_var config_file)
++  if(SUBTEST_SUFFIX STREQUAL "single_debug_info")
++    include(${config_file})
++
++    if(OBJDUMP_EXECUTABLE)
++      set(${found_var} true PARENT_SCOPE)
++    endif()
++  else()
++    set(${found_var} true PARENT_SCOPE)
++  endif()
++endfunction()
+diff --git a/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/test.cmake b/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/test.cmake
+index c200fa502c..6877c57744 100644
+--- a/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/test.cmake
++++ b/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/test.cmake
+@@ -24,6 +24,12 @@ if(GENERATOR_TYPE STREQUAL "RPM")
+     "${CMAKE_CURRENT_BINARY_DIR}/pre_trans_foo.sh")
+   set(CPACK_RPM_foo_POST_TRANS_SCRIPT_FILE
+     "${CMAKE_CURRENT_BINARY_DIR}/post_trans_foo.sh")
++
++  if(RunCMake_SUBTEST_SUFFIX STREQUAL "single_debug_info")
++    set(CPACK_RPM_MAIN_COMPONENT "foo")
++    set(CPACK_RPM_DEBUGINFO_SINGLE_PACKAGE ON)
++    set(CPACK_RPM_FOO_FILE_NAME "RPM-DEFAULT")
++  endif()
+ endif()
+ 
+ set(CMAKE_BUILD_WITH_INSTALL_RPATH 1)
+-- 
+2.40.1
+

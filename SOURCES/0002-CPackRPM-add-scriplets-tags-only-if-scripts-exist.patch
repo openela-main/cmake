@@ -1,0 +1,390 @@
+From b085a0fc400d005f5a70b4148ac7d946967d50dc Mon Sep 17 00:00:00 2001
+From: Domen Vrankar <domen.vrankar@gmail.com>
+Date: Thu, 1 Apr 2021 22:28:24 +0200
+Subject: [PATCH 2/3] CPackRPM: add scriplets tags only if scripts exist
+
+Scriplet tags should not be added to generated
+spec files if scripts weren't provided as those
+tags are otherwise present in generated rpm file
+even if the script wasn't provided thereby
+generating unneeded dependency on shell.
+
+Fixes: #21345
+(cherry picked from commit 34c8a23044eaf8d56f405c4c9f13b53d0b47c963)
+---
+ Modules/Internal/CPack/CPackRPM.cmake         | 103 ++++++++++------
+ Tests/RunCMake/CPack/RunCMakeTest.cmake       |   2 +-
+ .../tests/INSTALL_SCRIPTS/ExpectedFiles.cmake |   2 +-
+ ...NT-no_scripts_single_debug_info-stderr.txt |   1 +
+ .../INSTALL_SCRIPTS/RPM-Prerequirements.cmake |   2 +-
+ .../tests/INSTALL_SCRIPTS/VerifyResult.cmake  |  39 ++++---
+ .../CPack/tests/INSTALL_SCRIPTS/test.cmake    | 110 +++++++++---------
+ 7 files changed, 153 insertions(+), 106 deletions(-)
+ create mode 100644 Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/RPM-COMPONENT-no_scripts_single_debug_info-stderr.txt
+
+diff --git a/Modules/Internal/CPack/CPackRPM.cmake b/Modules/Internal/CPack/CPackRPM.cmake
+index 2ee062238c..d4d13b8367 100644
+--- a/Modules/Internal/CPack/CPackRPM.cmake
++++ b/Modules/Internal/CPack/CPackRPM.cmake
+@@ -6,6 +6,56 @@
+ cmake_policy(PUSH)
+ cmake_policy(SET CMP0057 NEW) # if IN_LIST
+ 
++function(set_spec_script_if_enabled TYPE PACKAGE_NAME VAR)
++  if(NOT "${VAR}" STREQUAL "" AND NOT "${VAR}" STREQUAL "\n")
++    if(PACKAGE_NAME)
++      set(PACKAGE_NAME " -n ${PACKAGE_NAME}")
++    endif()
++    set(${TYPE}_
++      "%${TYPE}${PACKAGE_NAME}\n"
++      "${VAR}\n" PARENT_SCOPE)
++  else()
++    set(${TYPE} "" PARENT_SCOPE)
++  endif()
++endfunction()
++
++macro(set_spec_scripts PACKAGE_NAME)
++  # we should only set scripts that were provided
++  # as script announcement without content inside
++  # spec file will generate unneeded dependency
++  # on shell
++
++  set_spec_script_if_enabled(
++    "post"
++    "${PACKAGE_NAME}"
++    "${RPM_SYMLINK_POSTINSTALL}\n${CPACK_RPM_SPEC_POSTINSTALL}")
++
++  set_spec_script_if_enabled(
++    "posttrans"
++    "${PACKAGE_NAME}"
++    "${CPACK_RPM_SPEC_POSTTRANS}")
++
++  set_spec_script_if_enabled(
++    "postun"
++    "${PACKAGE_NAME}"
++    "${CPACK_RPM_SPEC_POSTUNINSTALL}")
++
++  set_spec_script_if_enabled(
++    "pre"
++    "${PACKAGE_NAME}"
++    "${CPACK_RPM_SPEC_PREINSTALL}")
++
++  set_spec_script_if_enabled(
++    "pretrans"
++    "${PACKAGE_NAME}"
++    "${CPACK_RPM_SPEC_PRETRANS}")
++
++  set_spec_script_if_enabled(
++    "preun"
++    "${PACKAGE_NAME}"
++    "${CPACK_RPM_SPEC_PREUNINSTALL}")
++endmacro()
++
+ function(get_file_permissions FILE RETURN_VAR)
+   execute_process(COMMAND ls -l ${FILE}
+           OUTPUT_VARIABLE permissions_
+@@ -1607,6 +1657,9 @@ Vendor:         \@CPACK_RPM_PACKAGE_VENDOR\@
+     )
+ 
+   elseif(GENERATE_SPEC_PARTS) # binary rpm with single debuginfo package
++
++    set_spec_scripts("${CPACK_RPM_PACKAGE_NAME}")
++
+     file(WRITE ${CPACK_RPM_BINARY_SPECFILE}.in
+         "# -*- rpm-spec -*-
+ %package -n \@CPACK_RPM_PACKAGE_NAME\@
+@@ -1637,24 +1690,12 @@ Vendor:         \@CPACK_RPM_PACKAGE_VENDOR\@
+ %description -n \@CPACK_RPM_PACKAGE_NAME\@
+ \@CPACK_RPM_PACKAGE_DESCRIPTION\@
+ 
+-%post -n \@CPACK_RPM_PACKAGE_NAME\@
+-\@RPM_SYMLINK_POSTINSTALL\@
+-\@CPACK_RPM_SPEC_POSTINSTALL\@
+-
+-%posttrans -n \@CPACK_RPM_PACKAGE_NAME\@
+-\@CPACK_RPM_SPEC_POSTTRANS\@
+-
+-%postun -n \@CPACK_RPM_PACKAGE_NAME\@
+-\@CPACK_RPM_SPEC_POSTUNINSTALL\@
+-
+-%pre -n \@CPACK_RPM_PACKAGE_NAME\@
+-\@CPACK_RPM_SPEC_PREINSTALL\@
+-
+-%pretrans -n \@CPACK_RPM_PACKAGE_NAME\@
+-\@CPACK_RPM_SPEC_PRETRANS\@
+-
+-%preun -n \@CPACK_RPM_PACKAGE_NAME\@
+-\@CPACK_RPM_SPEC_PREUNINSTALL\@
++\@post_\@
++\@posttrans_\@
++\@postun_\@
++\@pre_\@
++\@pretrans_\@
++\@preun_\@
+ 
+ %files -n \@CPACK_RPM_PACKAGE_NAME\@
+ %defattr(\@TMP_DEFAULT_FILE_PERMISSIONS\@,\@TMP_DEFAULT_USER\@,\@TMP_DEFAULT_GROUP\@,\@TMP_DEFAULT_DIR_PERMISSIONS\@)
+@@ -1681,6 +1722,8 @@ Vendor:         \@CPACK_RPM_PACKAGE_VENDOR\@
+     set(RPMBUILD_FLAGS "-bb")
+     if(CPACK_RPM_GENERATE_USER_BINARY_SPECFILE_TEMPLATE OR NOT CPACK_RPM_USER_BINARY_SPECFILE)
+ 
++      set_spec_scripts("")
++
+       file(WRITE ${CPACK_RPM_BINARY_SPECFILE}.in
+         "# Restore old style debuginfo creation for rpm >= 4.14.
+ %undefine _debugsource_packages
+@@ -1744,24 +1787,12 @@ mv %_topdir/tmpBBroot $RPM_BUILD_ROOT
+ 
+ %clean
+ 
+-%post
+-\@RPM_SYMLINK_POSTINSTALL\@
+-\@CPACK_RPM_SPEC_POSTINSTALL\@
+-
+-%posttrans
+-\@CPACK_RPM_SPEC_POSTTRANS\@
+-
+-%postun
+-\@CPACK_RPM_SPEC_POSTUNINSTALL\@
+-
+-%pre
+-\@CPACK_RPM_SPEC_PREINSTALL\@
+-
+-%pretrans
+-\@CPACK_RPM_SPEC_PRETRANS\@
+-
+-%preun
+-\@CPACK_RPM_SPEC_PREUNINSTALL\@
++\@post_\@
++\@posttrans_\@
++\@postun_\@
++\@pre_\@
++\@pretrans_\@
++\@preun_\@
+ 
+ %files
+ %defattr(\@TMP_DEFAULT_FILE_PERMISSIONS\@,\@TMP_DEFAULT_USER\@,\@TMP_DEFAULT_GROUP\@,\@TMP_DEFAULT_DIR_PERMISSIONS\@)
+diff --git a/Tests/RunCMake/CPack/RunCMakeTest.cmake b/Tests/RunCMake/CPack/RunCMakeTest.cmake
+index 48b9c1d95c..a3c72a1cf2 100644
+--- a/Tests/RunCMake/CPack/RunCMakeTest.cmake
++++ b/Tests/RunCMake/CPack/RunCMakeTest.cmake
+@@ -16,7 +16,7 @@ run_cpack_test(VERSION "RPM.VERSION;DEB.VERSION" false "MONOLITHIC;COMPONENT")
+ run_cpack_test(EXTRA "DEB.EXTRA" false "COMPONENT")
+ run_cpack_test_subtests(GENERATE_SHLIBS "soversion_not_zero;soversion_zero" "DEB.GENERATE_SHLIBS" true "COMPONENT")
+ run_cpack_test(GENERATE_SHLIBS_LDCONFIG "DEB.GENERATE_SHLIBS_LDCONFIG" true "COMPONENT")
+-run_cpack_test_subtests(INSTALL_SCRIPTS "default;single_debug_info" "RPM.INSTALL_SCRIPTS" false "COMPONENT")
++run_cpack_test_subtests(INSTALL_SCRIPTS "default;single_debug_info;no_scripts;no_scripts_single_debug_info" "RPM.INSTALL_SCRIPTS" false "COMPONENT")
+ run_cpack_test(LONG_FILENAMES "DEB.LONG_FILENAMES" false "MONOLITHIC")
+ run_cpack_test_subtests(MAIN_COMPONENT "invalid;found" "RPM.MAIN_COMPONENT" false "COMPONENT")
+ run_cpack_test(MINIMAL "RPM.MINIMAL;DEB.MINIMAL;7Z;TBZ2;TGZ;TXZ;TZ;ZIP;STGZ;External" false "MONOLITHIC;COMPONENT")
+diff --git a/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/ExpectedFiles.cmake b/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/ExpectedFiles.cmake
+index 29e36a33fb..5a87c442b5 100644
+--- a/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/ExpectedFiles.cmake
++++ b/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/ExpectedFiles.cmake
+@@ -1,4 +1,4 @@
+-if(RunCMake_SUBTEST_SUFFIX STREQUAL "single_debug_info")
++if(RunCMake_SUBTEST_SUFFIX MATCHES ".*single_debug_info")
+   set(EXPECTED_FILE_1 "install_scripts-0.1.1-1.*.rpm")
+ else()
+   set(EXPECTED_FILE_1_COMPONENT "foo")
+diff --git a/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/RPM-COMPONENT-no_scripts_single_debug_info-stderr.txt b/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/RPM-COMPONENT-no_scripts_single_debug_info-stderr.txt
+new file mode 100644
+index 0000000000..8d98f9debd
+--- /dev/null
++++ b/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/RPM-COMPONENT-no_scripts_single_debug_info-stderr.txt
+@@ -0,0 +1 @@
++.*
+diff --git a/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/RPM-Prerequirements.cmake b/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/RPM-Prerequirements.cmake
+index c5d20cc691..90cfe4467f 100644
+--- a/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/RPM-Prerequirements.cmake
++++ b/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/RPM-Prerequirements.cmake
+@@ -1,5 +1,5 @@
+ function(get_test_prerequirements found_var config_file)
+-  if(SUBTEST_SUFFIX STREQUAL "single_debug_info")
++  if(SUBTEST_SUFFIX MATCHES ".*single_debug_info")
+     include(${config_file})
+ 
+     if(OBJDUMP_EXECUTABLE)
+diff --git a/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/VerifyResult.cmake b/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/VerifyResult.cmake
+index 1a1e983737..0c42d90695 100644
+--- a/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/VerifyResult.cmake
++++ b/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/VerifyResult.cmake
+@@ -7,23 +7,34 @@ function(checkScripts_ FILE COMPARE_LIST)
+           ERROR_QUIET
+           OUTPUT_STRIP_TRAILING_WHITESPACE)
+ 
+-  string(REPLACE "\n" ";" FILE_SCRIPTS_LIST_ "${FILE_SCRIPTS_}")
++  if(COMPARE_LIST STREQUAL "")
++    if(NOT FILE_SCRIPTS_ STREQUAL "")
++      message(FATAL_ERROR "No scripts were expected in '${FILE}'; file info: '${FILE_SCRIPTS_}'")
++    endif()
++  else()
++    string(REPLACE "\n" ";" FILE_SCRIPTS_LIST_ "${FILE_SCRIPTS_}")
++
++    foreach(COMPARE_REGEX_ IN LISTS COMPARE_LIST)
++      unset(FOUND_)
+ 
+-  foreach(COMPARE_REGEX_ IN LISTS COMPARE_LIST)
+-    unset(FOUND_)
++      foreach(COMPARE_ IN LISTS FILE_SCRIPTS_LIST_)
++        if(COMPARE_ MATCHES "${COMPARE_REGEX_}")
++          set(FOUND_ true)
++          break()
++        endif()
++      endforeach()
+ 
+-    foreach(COMPARE_ IN LISTS FILE_SCRIPTS_LIST_)
+-      if(COMPARE_ MATCHES "${COMPARE_REGEX_}")
+-        set(FOUND_ true)
+-        break()
++      if(NOT FOUND_)
++        message(FATAL_ERROR "Missing scripts in '${FILE}'; file info: '${FILE_SCRIPTS_}'; missing: '${COMPARE_REGEX_}'")
+       endif()
+     endforeach()
+-
+-    if(NOT FOUND_)
+-      message(FATAL_ERROR "Missing scripts in '${FILE}'; file info: '${FILE_SCRIPTS_}'; missing: '${COMPARE_REGEX_}'")
+-    endif()
+-  endforeach()
++  endif()
+ endfunction()
+ 
+-checkScripts_("${FOUND_FILE_1}" "echo \"pre install foo\";echo \"post install foo\";echo \"pre uninstall foo\";echo \"post uninstall foo\";echo \"pre trans foo\";echo \"post trans foo\"")
+-checkScripts_("${FOUND_FILE_2}" "echo \"pre install\";echo \"post install\";echo \"pre uninstall\";echo \"post uninstall\";echo \"pre trans\";echo \"post trans\"")
++if(RunCMake_SUBTEST_SUFFIX MATCHES "no_scripts.*")
++  checkScripts_("${FOUND_FILE_1}" "")
++  checkScripts_("${FOUND_FILE_2}" "")
++else()
++  checkScripts_("${FOUND_FILE_1}" "echo \"pre install foo\";echo \"post install foo\";echo \"pre uninstall foo\";echo \"post uninstall foo\";echo \"pre trans foo\";echo \"post trans foo\"")
++  checkScripts_("${FOUND_FILE_2}" "echo \"pre install\";echo \"post install\";echo \"pre uninstall\";echo \"post uninstall\";echo \"pre trans\";echo \"post trans\"")
++endif()
+diff --git a/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/test.cmake b/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/test.cmake
+index 6877c57744..ce5db0cfe8 100644
+--- a/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/test.cmake
++++ b/Tests/RunCMake/CPack/tests/INSTALL_SCRIPTS/test.cmake
+@@ -1,31 +1,5 @@
+ if(GENERATOR_TYPE STREQUAL "RPM")
+-  set(CPACK_RPM_PRE_INSTALL_SCRIPT_FILE
+-    "${CMAKE_CURRENT_BINARY_DIR}/pre_install.sh")
+-  set(CPACK_RPM_POST_INSTALL_SCRIPT_FILE
+-    "${CMAKE_CURRENT_BINARY_DIR}/post_install.sh")
+-  set(CPACK_RPM_PRE_UNINSTALL_SCRIPT_FILE
+-    "${CMAKE_CURRENT_BINARY_DIR}/pre_uninstall.sh")
+-  set(CPACK_RPM_POST_UNINSTALL_SCRIPT_FILE
+-    "${CMAKE_CURRENT_BINARY_DIR}/post_uninstall.sh")
+-  set(CPACK_RPM_PRE_TRANS_SCRIPT_FILE
+-    "${CMAKE_CURRENT_BINARY_DIR}/pre_trans.sh")
+-  set(CPACK_RPM_POST_TRANS_SCRIPT_FILE
+-    "${CMAKE_CURRENT_BINARY_DIR}/post_trans.sh")
+-
+-  set(CPACK_RPM_foo_PRE_INSTALL_SCRIPT_FILE
+-    "${CMAKE_CURRENT_BINARY_DIR}/pre_install_foo.sh")
+-  set(CPACK_RPM_foo_POST_INSTALL_SCRIPT_FILE
+-    "${CMAKE_CURRENT_BINARY_DIR}/post_install_foo.sh")
+-  set(CPACK_RPM_foo_PRE_UNINSTALL_SCRIPT_FILE
+-    "${CMAKE_CURRENT_BINARY_DIR}/pre_uninstall_foo.sh")
+-  set(CPACK_RPM_foo_POST_UNINSTALL_SCRIPT_FILE
+-    "${CMAKE_CURRENT_BINARY_DIR}/post_uninstall_foo.sh")
+-  set(CPACK_RPM_foo_PRE_TRANS_SCRIPT_FILE
+-    "${CMAKE_CURRENT_BINARY_DIR}/pre_trans_foo.sh")
+-  set(CPACK_RPM_foo_POST_TRANS_SCRIPT_FILE
+-    "${CMAKE_CURRENT_BINARY_DIR}/post_trans_foo.sh")
+-
+-  if(RunCMake_SUBTEST_SUFFIX STREQUAL "single_debug_info")
++  if(RunCMake_SUBTEST_SUFFIX MATCHES ".*single_debug_info")
+     set(CPACK_RPM_MAIN_COMPONENT "foo")
+     set(CPACK_RPM_DEBUGINFO_SINGLE_PACKAGE ON)
+     set(CPACK_RPM_FOO_FILE_NAME "RPM-DEFAULT")
+@@ -34,33 +8,63 @@ endif()
+ 
+ set(CMAKE_BUILD_WITH_INSTALL_RPATH 1)
+ 
+-# default
+-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pre_install.sh"
+-    "echo \"pre install\"\n")
+-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/post_install.sh"
+-    "echo \"post install\"\n")
+-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pre_uninstall.sh"
+-    "echo \"pre uninstall\"\n")
+-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/post_uninstall.sh"
+-    "echo \"post uninstall\"\n")
+-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pre_trans.sh"
+-    "echo \"pre trans\"\n")
+-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/post_trans.sh"
+-    "echo \"post trans\"\n")
++if(NOT RunCMake_SUBTEST_SUFFIX MATCHES "no_scripts.*")
++  if(GENERATOR_TYPE STREQUAL "RPM")
++    set(CPACK_RPM_PRE_INSTALL_SCRIPT_FILE
++      "${CMAKE_CURRENT_BINARY_DIR}/pre_install.sh")
++    set(CPACK_RPM_POST_INSTALL_SCRIPT_FILE
++      "${CMAKE_CURRENT_BINARY_DIR}/post_install.sh")
++    set(CPACK_RPM_PRE_UNINSTALL_SCRIPT_FILE
++      "${CMAKE_CURRENT_BINARY_DIR}/pre_uninstall.sh")
++    set(CPACK_RPM_POST_UNINSTALL_SCRIPT_FILE
++      "${CMAKE_CURRENT_BINARY_DIR}/post_uninstall.sh")
++    set(CPACK_RPM_PRE_TRANS_SCRIPT_FILE
++      "${CMAKE_CURRENT_BINARY_DIR}/pre_trans.sh")
++    set(CPACK_RPM_POST_TRANS_SCRIPT_FILE
++      "${CMAKE_CURRENT_BINARY_DIR}/post_trans.sh")
++
++    set(CPACK_RPM_foo_PRE_INSTALL_SCRIPT_FILE
++      "${CMAKE_CURRENT_BINARY_DIR}/pre_install_foo.sh")
++    set(CPACK_RPM_foo_POST_INSTALL_SCRIPT_FILE
++      "${CMAKE_CURRENT_BINARY_DIR}/post_install_foo.sh")
++    set(CPACK_RPM_foo_PRE_UNINSTALL_SCRIPT_FILE
++      "${CMAKE_CURRENT_BINARY_DIR}/pre_uninstall_foo.sh")
++    set(CPACK_RPM_foo_POST_UNINSTALL_SCRIPT_FILE
++      "${CMAKE_CURRENT_BINARY_DIR}/post_uninstall_foo.sh")
++    set(CPACK_RPM_foo_PRE_TRANS_SCRIPT_FILE
++      "${CMAKE_CURRENT_BINARY_DIR}/pre_trans_foo.sh")
++    set(CPACK_RPM_foo_POST_TRANS_SCRIPT_FILE
++      "${CMAKE_CURRENT_BINARY_DIR}/post_trans_foo.sh")
++  endif()
++
++  # default
++  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pre_install.sh"
++      "echo \"pre install\"\n")
++  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/post_install.sh"
++      "echo \"post install\"\n")
++  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pre_uninstall.sh"
++      "echo \"pre uninstall\"\n")
++  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/post_uninstall.sh"
++      "echo \"post uninstall\"\n")
++  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pre_trans.sh"
++      "echo \"pre trans\"\n")
++  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/post_trans.sh"
++      "echo \"post trans\"\n")
+ 
+-# specific
+-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pre_install_foo.sh"
+-    "echo \"pre install foo\"\n")
+-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/post_install_foo.sh"
+-    "echo \"post install foo\"\n")
+-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pre_uninstall_foo.sh"
+-    "echo \"pre uninstall foo\"\n")
+-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/post_uninstall_foo.sh"
+-    "echo \"post uninstall foo\"\n")
+-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pre_trans_foo.sh"
+-    "echo \"pre trans foo\"\n")
+-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/post_trans_foo.sh"
+-    "echo \"post trans foo\"\n")
++  # specific
++  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pre_install_foo.sh"
++      "echo \"pre install foo\"\n")
++  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/post_install_foo.sh"
++      "echo \"post install foo\"\n")
++  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pre_uninstall_foo.sh"
++      "echo \"pre uninstall foo\"\n")
++  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/post_uninstall_foo.sh"
++      "echo \"post uninstall foo\"\n")
++  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pre_trans_foo.sh"
++      "echo \"pre trans foo\"\n")
++  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/post_trans_foo.sh"
++      "echo \"post trans foo\"\n")
++endif()
+ 
+ install(FILES CMakeLists.txt DESTINATION foo COMPONENT foo)
+ install(FILES CMakeLists.txt DESTINATION bar COMPONENT bar)
+-- 
+2.40.1
+

@@ -65,7 +65,7 @@
 %{?rcsuf:%global versuf -%{rcsuf}}
 
 # For handling bump release by rpmdev-bumpspec and mass rebuild
-%global baserelease 8
+%global baserelease 9
 
 # Uncomment if building for EPEL
 #global name_suffix %%{major_version}
@@ -114,6 +114,13 @@ Patch104:       cmake-3.20.4-glibc_libdl.patch
 
 # rhbz#2162696
 Patch105:	0001-Tests-Explicitly-allow-usage-of-git-file-based-proto.patch
+
+# RHEL-14086
+Patch106:	0001-CPackRPM-handle-scripts-in-debuginfo-single-package-.patch
+Patch107:	0002-CPackRPM-add-scriplets-tags-only-if-scripts-exist.patch
+Patch108:	0003-CPackRPM-avoid-a-spurious-in-the-pre-and-other-secti.patch
+
+
 
 # Patch for renaming on EPEL
 %if 0%{?name_suffix:1}
@@ -534,6 +541,9 @@ popd
 
 
 %changelog
+* Mon Oct 23 2023 Tom Stellard <tstellar@redhat.com> - 3.20.2-9
+- Fix CPack bug with pretrans scriptlet
+
 * Tue Jan 31 2023 Tom Stellard <tstellar@redhat.com> - 3.20.2-8
 - Fix test case broken by git fix for CVE-2022-39253
 

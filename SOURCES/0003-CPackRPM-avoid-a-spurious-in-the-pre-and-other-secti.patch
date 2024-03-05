@@ -1,0 +1,33 @@
+From 3a2e5547615cff5ec4eace50f4de799443f81b98 Mon Sep 17 00:00:00 2001
+From: Artur Samarin <39006-asamarin97@users.noreply.gitlab.kitware.com>
+Date: Fri, 30 Jul 2021 19:38:56 +0300
+Subject: [PATCH 3/3] CPackRPM: avoid a spurious `;` in the `%pre` and other
+ sections with scripts
+
+This was accidentally added by commit 34c8a23044 (CPackRPM: add
+scriplets tags only if scripts exist, 2021-04-01, v3.21.0-rc1~387^2).
+
+Fixes: #22501
+(cherry picked from commit 3cdf23985fc4578b719546a0e76bdcf82457477a)
+---
+ Modules/Internal/CPack/CPackRPM.cmake | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/Modules/Internal/CPack/CPackRPM.cmake b/Modules/Internal/CPack/CPackRPM.cmake
+index d4d13b8367..66a97da675 100644
+--- a/Modules/Internal/CPack/CPackRPM.cmake
++++ b/Modules/Internal/CPack/CPackRPM.cmake
+@@ -11,9 +11,7 @@ function(set_spec_script_if_enabled TYPE PACKAGE_NAME VAR)
+     if(PACKAGE_NAME)
+       set(PACKAGE_NAME " -n ${PACKAGE_NAME}")
+     endif()
+-    set(${TYPE}_
+-      "%${TYPE}${PACKAGE_NAME}\n"
+-      "${VAR}\n" PARENT_SCOPE)
++    set(${TYPE}_ "%${TYPE}${PACKAGE_NAME}\n${VAR}\n" PARENT_SCOPE)
+   else()
+     set(${TYPE} "" PARENT_SCOPE)
+   endif()
+-- 
+2.40.1
+
