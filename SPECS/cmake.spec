@@ -58,21 +58,21 @@
 %{!?_vpath_builddir:%global _vpath_builddir %{_target_platform}}
 
 %global major_version 3
-%global minor_version 20
+%global minor_version 26
 # Set to RC version if building RC, else %%{nil}
 #global rcsuf rc1
 %{?rcsuf:%global relsuf .%{rcsuf}}
 %{?rcsuf:%global versuf -%{rcsuf}}
 
 # For handling bump release by rpmdev-bumpspec and mass rebuild
-%global baserelease 9
+%global baserelease 2
 
 # Uncomment if building for EPEL
 #global name_suffix %%{major_version}
 %global orig_name cmake
 
 Name:           %{orig_name}%{?name_suffix}
-Version:        %{major_version}.%{minor_version}.2
+Version:        %{major_version}.%{minor_version}.5
 Release:        %{baserelease}%{?relsuf}%{?dist}
 Summary:        Cross-platform make system
 
@@ -103,24 +103,6 @@ Patch100:       %{name}-findruby.patch
 %if 0%{?fedora} && 0%{?fedora} < 34
 Patch101:       %{name}-fedora-flag_release.patch
 %endif
-# Add dl to CMAKE_DL_LIBS on MINGW
-# https://gitlab.kitware.com/cmake/cmake/issues/17600
-Patch102:       %{name}-mingw-dl.patch
-# memory-hungry tests when building on koji builders with *lots* of cores
-# so limit it to some reasonable number (4)
-Patch103:       cmake-3.20-CPACK_THREADS.patch
-# see rhbz#1975096
-Patch104:       cmake-3.20.4-glibc_libdl.patch
-
-# rhbz#2162696
-Patch105:	0001-Tests-Explicitly-allow-usage-of-git-file-based-proto.patch
-
-# RHEL-14086
-Patch106:	0001-CPackRPM-handle-scripts-in-debuginfo-single-package-.patch
-Patch107:	0002-CPackRPM-add-scriplets-tags-only-if-scripts-exist.patch
-Patch108:	0003-CPackRPM-avoid-a-spurious-in-the-pre-and-other-secti.patch
-
-
 
 # Patch for renaming on EPEL
 %if 0%{?name_suffix:1}
@@ -218,6 +200,11 @@ Provides: bundled(md5-deutsch)
 # https://fedorahosted.org/fpc/ticket/555
 Provides: bundled(kwsys)
 
+# The license files are shipped in both the cmake and cmake-doc packages and
+# can cause conflicts when updating.
+# See https://lists.fedoraproject.org/archives/list/devel@lists.fedoraproject.org/thread/JDSG4K2S3IRCSZ37WCUGABY3JA45QMVA/#GEZTXMP5SXNMGAT3JPXDSQM5FPOLUJ5K
+Conflicts: cmake-doc < %{version}-%{release}
+
 %description
 CMake is used to control the software compilation process using simple
 platform and compiler independent configuration files. CMake generates
@@ -249,8 +236,10 @@ This package contains common data-files for %{name}.
 Summary:        Documentation for %{name}
 BuildArch:      noarch
 
-# license files moved from the doc package to main package.
-Conflicts:      %{name} <= 3.20.1
+# The license files are shipped in both the cmake and cmake-doc packages and
+# can cause conflicts when updating.
+# See https://lists.fedoraproject.org/archives/list/devel@lists.fedoraproject.org/thread/JDSG4K2S3IRCSZ37WCUGABY3JA45QMVA/#GEZTXMP5SXNMGAT3JPXDSQM5FPOLUJ5K
+Conflicts:      %{name} < %{version}-%{release}
 
 %description    doc
 This package contains documentation for %{name}.
@@ -541,6 +530,12 @@ popd
 
 
 %changelog
+* Fri Nov 03 2023 Tom Stellard <tstellar@redhat.com> - 3.26.5-2
+- Fix conflict with license files.
+
+* Thu Oct 26 2023 Tom Stellard <tstellar@redhat.com> - 3.26.5-1
+- Update to version 3.26.5-1
+
 * Mon Oct 23 2023 Tom Stellard <tstellar@redhat.com> - 3.20.2-9
 - Fix CPack bug with pretrans scriptlet
 
