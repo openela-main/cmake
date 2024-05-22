@@ -65,7 +65,7 @@
 %{?rcsuf:%global versuf -%{rcsuf}}
 
 # For handling bump release by rpmdev-bumpspec and mass rebuild
-%global baserelease 1
+%global baserelease 2
 
 # Uncomment if building for EPEL
 #global name_suffix %%{major_version}
@@ -530,9 +530,11 @@ popd
 
 
 %changelog
-* Wed Nov 15 2023 Dominik Rehák <drehak@redhat.com> - 3.26.5-1
-- Update to version 3.26.5
+* Fri Nov 03 2023 Tom Stellard <tstellar@redhat.com> - 3.26.5-2
 - Fix conflict with license files.
+
+* Thu Oct 26 2023 Tom Stellard <tstellar@redhat.com> - 3.26.5-1
+- Update to version 3.26.5-1
 
 * Tue Jan 31 2023 Tom Stellard <tstellar@redhat.com> - 3.20.2-5
 - Fix test case broken by git fix for CVE-2022-39253
