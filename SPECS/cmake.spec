@@ -65,7 +65,7 @@
 %{?rcsuf:%global versuf -%{rcsuf}}
 
 # For handling bump release by rpmdev-bumpspec and mass rebuild
-%global baserelease 2
+%global baserelease 3
 
 # Uncomment if building for EPEL
 #global name_suffix %%{major_version}
@@ -184,7 +184,7 @@ BuildRequires:  %{name}-rpm-macros
 BuildRequires: make
 
 Requires:       %{name}-data = %{version}-%{release}
-Requires:       %{name}-rpm-macros = %{version}-%{release}
+Requires:       (%{name}-rpm-macros = %{version}-%{release} if rpm-build)
 Requires:       %{name}-filesystem%{?_isa} = %{version}-%{release}
 
 # Explicitly require make.  (rhbz#1862014)
@@ -218,7 +218,7 @@ generation, code generation, and template instantiation.
 Summary:        Common data-files for %{name}
 Requires:       %{name} = %{version}-%{release}
 Requires:       %{name}-filesystem = %{version}-%{release}
-Requires:       %{name}-rpm-macros = %{version}-%{release}
+Requires:       (%{name}-rpm-macros = %{version}-%{release} if rpm-build)
 %if %{with emacs}
 %if 0%{?fedora} || 0%{?rhel} >= 7
 Requires:       emacs-filesystem%{?_emacs_version: >= %{_emacs_version}}
@@ -530,6 +530,9 @@ popd
 
 
 %changelog
+* Tue Dec 02 2025 Tom Stellard <tstellar@redhat.com> - 3.26.5-3
+- Make cmake-rpm-macros requires conditional on rpm-build
+
 * Fri Nov 03 2023 Tom Stellard <tstellar@redhat.com> - 3.26.5-2
 - Fix conflict with license files.
 
