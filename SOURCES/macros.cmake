@@ -52,7 +52,8 @@
 
 %ctest(:-:) \
   cd "%{__cmake_builddir}" \
-  %__ctest --output-on-failure --force-new-ctest-process %{?_smp_mflags} %{**} \
+  %__ctest --output-on-failure --force-new-ctest-process %{?_smp_mflags} \\\
+  %{lua:print((string.gsub(rpm.expand('%{**}'),"%-%-%s","")))} \
   cd -
 
 

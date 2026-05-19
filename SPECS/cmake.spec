@@ -42,11 +42,20 @@
 %bcond_without bundled_rhash
 %endif
 
+# cppdap is currently shipped as a static lib from upstream,
+# so we do not have it in the repos.
+%bcond_without bundled_cppdap
+
 # Run tests
 %bcond_without test
 
 # Enable X11 tests
 %bcond_without X11_test
+
+# Disable LTO on i686 due to https://issues.redhat.com/browse/RHEL-110451
+%ifarch %{ix86}
+%global _lto_cflags %{nil}
+%endif
 
 # Place rpm-macros into proper location
 %global rpm_macros_dir %(d=%{_rpmconfigdir}/macros.d; [ -d $d ] || d=%{_sysconfdir}/rpm; echo $d)
@@ -58,7 +67,7 @@
 %{!?_vpath_builddir:%global _vpath_builddir %{_target_platform}}
 
 %global major_version 3
-%global minor_version 26
+%global minor_version 31
 # Set to RC version if building RC, else %%{nil}
 #global rcsuf rc1
 %{?rcsuf:%global relsuf .%{rcsuf}}
@@ -72,7 +81,7 @@
 %global orig_name cmake
 
 Name:           %{orig_name}%{?name_suffix}
-Version:        %{major_version}.%{minor_version}.5
+Version:        %{major_version}.%{minor_version}.8
 Release:        %{baserelease}%{?relsuf}%{?dist}
 Summary:        Cross-platform make system
 
@@ -81,7 +90,7 @@ Summary:        Cross-platform make system
 # Source/kwsys/MD5.c is zlib
 # some GPL-licensed bison-generated files, which all include an
 # exception granting redistribution under terms of your choice
-License:        BSD and MIT and zlib
+License:        BSD-3-Clause AND MIT-open-group AND Zlib%{?with_bundled_cppdap: AND Apache-2.0}
 URL:            http://www.cmake.org
 Source0:        http://www.cmake.org/files/v%{major_version}.%{minor_version}/%{orig_name}-%{version}%{?versuf}.tar.gz
 Source1:        %{name}-init.el
@@ -132,6 +141,11 @@ BuildRequires:  %{_bindir}/sphinx-build
 %if %{without bootstrap}
 BuildRequires:  bzip2-devel
 BuildRequires:  curl-devel
+%if %{with bundled_cppdap}
+Provides: bundled(cppdap)
+%else
+BuildRequires:  cppdap-devel
+%endif
 BuildRequires:  expat-devel
 %if %{with bundled_jsoncpp}
 Provides: bundled(jsoncpp)
@@ -310,6 +324,9 @@ $SRCDIR/bootstrap --prefix=%{_prefix} --datadir=/share/%{name} \
                   --docdir=/share/doc/%{name} --mandir=/share/man \
                   --%{?with_bootstrap:no-}system-libs \
                   --parallel="$(echo %{?_smp_mflags} | sed -e 's|-j||g')" \
+%if %{with bundled_cppdap}
+                  --no-system-cppdap \
+%endif
 %if %{with bundled_rhash}
                   --no-system-librhash \
 %endif
@@ -365,6 +382,10 @@ do
   dname=$(basename $dir)
   cp -p $f ./${fname}_${dname}
 done
+%if %{with bundled_cppdap}
+cp -p Utilities/cmcppdap/LICENSE LICENSE.cppdap
+cp -p Utilities/cmcppdap/NOTICE NOTICE.cppdap
+%endif
 # Cleanup pre-installed documentation
 %if %{with sphinx}
 mv %{buildroot}%{_docdir}/%{name}/html .
@@ -470,6 +491,10 @@ popd
 %doc %dir %{_pkgdocdir}
 %license Copyright.txt*
 %license COPYING*
+%if %{with bundled_cppdap}
+%license LICENSE.cppdap
+%license NOTICE.cppdap
+%endif
 %if %{with sphinx}
 %{_mandir}/man1/c%{name}.1.*
 %{_mandir}/man1/%{name}.1.*
@@ -530,8 +555,14 @@ popd
 
 
 %changelog
-* Tue Dec 02 2025 Tom Stellard <tstellar@redhat.com> - 3.26.5-3
-- Make cmake-rpm-macros requires conditional on rpm-build
+* Tue Dec 02 2025 Tom Stellard <tstellar@redhat.com> - 3.31.8-4
+- Make clang-rpm-macros requires conditional on rpm-build
+
+* Fri Nov 28 2025 Tom Stellard <tstellar@redhat.com> - 3.31.8-2
+- macros: Fix missing asterisk in ctest macro
+
+* Sat Sep 06 2025 Tom Stellard <tstellar@redhat.com> - 3.31.8-1
+- cmake-3.31.8
 
 * Fri Nov 03 2023 Tom Stellard <tstellar@redhat.com> - 3.26.5-2
 - Fix conflict with license files.
