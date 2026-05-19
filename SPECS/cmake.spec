@@ -68,11 +68,11 @@
 %{!?_vpath_builddir:%global _vpath_builddir %{_target_platform}}
 
 %global major_version 3
-%global minor_version 30
-%global patch_version 5
+%global minor_version 31
+%global patch_version 8
 
 # For handling bump release by rpmdev-bumpspec and mass rebuild
-%global baserelease 3
+%global baserelease 1
 
 # Set to RC version if building RC, else comment out.
 #%%global rcsuf rc3
@@ -552,6 +552,9 @@ popd
 
 
 %changelog
+* Sat Sep 06 2025 Tom Stellard <tstellar@redhat.com> - 3.31.8-1
+- cmake-3.31.8
+
 * Fri Apr 04 2025 Tom Stellard <tstellar@redhat.com> - 3.30.5-3
 - macros: Fix missing asterisk in ctest macro
 
